@@ -1,0 +1,94 @@
+var bulletItem = cc.Sprite.extend({
+    ctor:function(x, y, rot, size, name, speedX, speedY){
+        this._super();
+        this.name = name;
+        this.size = size;
+        this.angle = rot;
+        this.speed = bulletSpeed;
+        this.acc = bulletAcc;
+        this.moving = true;
+        this.captured = false;
+        this.active = true;
+        this.life = cannonSizeList[size-1].life;
+        this.capturingCounter = captureSegment;
+        this.timetick = 0;
+
+        var _src = asset_folder+getSource("bullet"+this.size);
+        this.initWithFile(_src);
+
+        var posX = x;
+        var posY = y;
+
+        this.setPosition(cc.p(posX, posY));
+        this.setRotation(this.angle);
+
+        if(speedY !== null){
+            this.speedY = this.speed * Math.cos(this.angle*DEG_TO_RAD);
+        }else{
+            this.speedY = speedY;
+        }
+
+
+        if(speedX !== null){
+            this.speedX = this.speed * Math.sin(this.angle*DEG_TO_RAD);
+        }else{
+            this.speedX = speedX;
+        }
+
+        this.accY = this.acc * Math.cos(this.angle*DEG_TO_RAD);
+        this.accX = this.acc * Math.sin(this.angle*DEG_TO_RAD);
+
+        gameLayer.addBody(posX, posY, this.width, this.height, this.angle, true, this, "bullet", this.life);
+
+        this.scheduleUpdate();
+    },
+    update:function(){
+        if(isConnect){
+            this.speedX += this.accX;
+            this.speedY += this.accY;
+
+            var posX = this.getPosition().x + this.speedX;
+            var posY = this.getPosition().y + this.speedY;
+
+            if(this.checkBorder(posX, posY)){
+                this.setPosition(posX, posY);
+            }else{
+                //console.log("---- Out of Border");
+                this.destroy();
+            }
+            //console.log(" --- update pos: "+this.x+" , "+ this.y);
+        }
+    },
+    checkBorder: function (x,y) {
+        if(x > -this._getWidth() && x < screen_width + this._getWidth() && y > - this._getWidth() && y < screen_height + this._getWidth()){
+            return true;
+        }
+        return false;
+    },
+    getLife: function () {
+      return this.life;
+    },
+    getName: function () {
+        return this.name;
+    },
+    getPosition: function () {
+        return {x:this.x, y:this.y};
+    },
+    isFromOrigin: function(){
+        var _name = this.name;
+        if(_name.indexOf(cannonType)!== -1){
+            return true;
+        }
+        return false;
+    },
+    destroy: function () {
+        //console.log("BULLET DESTROY");
+        //removeBox2dBody(this);
+
+        destroyBullet(this.name);
+
+        removeShapeBody(this, "bullet");
+        removeFromBulletList(this);
+        bulletLayer.removeChild(this);
+    }
+});

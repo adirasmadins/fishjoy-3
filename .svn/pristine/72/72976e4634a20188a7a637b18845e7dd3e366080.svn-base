@@ -1,0 +1,23 @@
+var express = require('express');
+var app = express();
+var http = require('http').Server(app);
+var io = require('socket.io')(http);
+var bodyParser = require('body-parser');
+var view = '/view/';
+
+process.env.PWD = process.cwd();
+
+app.use(express.static(__dirname));
+app.use(bodyParser.urlencoded({ extended: false }));
+app.set('view engine', 'ejs');
+app.set('views', __dirname + view);
+
+app.get('/', function (req, res) {
+   //checkRoomId(req, res);
+    res.render('game');
+
+});
+
+http.listen(3300, function(){
+    console.log('listening on -- Port 3300');
+});

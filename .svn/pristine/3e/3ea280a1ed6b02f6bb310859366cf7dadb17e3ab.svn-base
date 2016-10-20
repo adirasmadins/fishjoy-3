@@ -1,0 +1,29 @@
+function startGame(){
+    /*
+    fishLayer.update(function () {
+      if(this._hasChildren){
+            var i = this.childrenCount;
+            while(i>0){
+                var _fish = this.child
+            }
+        }
+        console.log("UPDATE");
+    });
+    fishLayer.scheduleUpdate();
+     */
+    //setTimeout(moveIt, 3000);
+}
+/*
+function updateFishes(){
+    if(fishLayer._hasChildren){
+        var i = fishLayer.childrenCount;
+        while(i>0){
+            var _fish = fishLayer.chi
+            i--;
+        }
+    }
+}
+*/
+function moveIt(){
+
+}

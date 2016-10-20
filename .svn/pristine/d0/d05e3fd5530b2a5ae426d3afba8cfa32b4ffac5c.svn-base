@@ -1,0 +1,840 @@
+var gameLayer;
+var backgroundLayer;
+var fishLayer;
+var commonButtonLayer;
+var cannonLayer;
+var cannonBGLayer;
+var buttonLayer;
+var bulletLayer;
+var netLayer;
+var coinLayer;
+
+var fishList = [];
+var fishPosList = [];
+
+var bulletList = [];
+var bulletPosList = [];
+
+var buttonList = [];
+
+var isBulletIdle = false;
+var bulletIdleTimeout = null;
+
+var activeCannon = null;
+
+var isReady = false;
+
+var fishIndex = 0;
+var bulletIndex = 0;
+var socket;
+
+var maxFishIndex = 1000;
+var maxBulletIndex = 1000;
+
+var gameScene = cc.Scene.extend({
+  onEnter:function () {
+    this._super();
+      socket = io();
+      if(socket){
+          socket.on('connect', function(){
+              console.log('---- client connect');
+          });
+
+          socket.on('prepare',function(data){
+              console.log("CATCH prepare "+data);
+              setInitialParameter(data);
+              settingUp(data);
+          });
+
+          socket.on('set_as_driver', function () {
+              isDriver = true;
+          });
+
+          /*
+          socket.on('initiate', function(data, cannonid){
+              console.log('initiate data of '+data.length+'.....');
+              setMouseClickDetection();
+              setSelectedCannon(cannonid);
+              render(data);
+              startCounter();
+          });
+           */
+
+          socket.on("checkin", function(data){
+              setupJoinRequest(data);
+          });
+
+
+          socket.on("new_join", function(data){
+              console.log("--- NEW JOIN");
+              //updateCannonList(data);
+          });
+
+          socket.on('get_update', function(){
+              // get current game status
+          });
+
+          socket.on('update', function(data, cannondata, playerdata){
+              //console.log('UPDATE ');
+              if(!isConnectionLost){
+                  game_data_render = [];
+                  //stopClockEngine();
+                  var _playerData = filterPlayer(playerdata);
+                  //checkOwnCoin(_playerData);
+                  render(data);
+                  renderCannon(cannondata);
+                  createNotes(_playerData);
+                  //renderScore(_playerdata);
+                  //renderCoin(_playerdata);
+
+                  game_data_render = data;
+                  //setClockEngine();
+              }
+
+          });
+
+          socket.on('check_connection', function(){
+              checkConnectionStatus();
+          });
+
+          socket.on("standout",function(){
+              setSelectedCannon(null);
+              //updateCannonList(data);
+              removeCommonButton();
+          });
+
+          socket.on("checkout",function(){
+              //roomname = null;
+              window.location.replace("/");
+          });
+
+          socket.on("topup",function(data){
+              var clientdata = data;
+              //closePopup();
+              //console.log(" check on top up "+data.pass);
+              if(data.pass){
+                  // continue playing
+                  //console.log("--- should continue playing");
+                  closePopup();
+                  //$('#popup').hide();
+                  //console.log("Visible?"+$('#popup').is(':visible'));
+              }else{
+                  showRunningOfCoinPopup("no_available_coin");
+              }
+
+          });
+
+          socket.on("not_available_coin", function(){
+              showRunningOfCoinPopup("no_available_coin");
+          });
+
+          socket.on("not_enough_coin", function(){
+              console.log("--- BEING NOTIFY NO COIN FOR SHOT ");
+              showRunningOfCoinPopup("not_enough_coin");
+              startNoCoinTimer();
+          });
+
+          socket.on("change_fish_angle", function (data) {
+              console.log("--- change on fish angle");
+              changeFishAngle(data);
+          });
+          
+          socket.on("new_fish", function (data) {
+              console.log("--- new fish");
+              var _data = [];
+              _data.push(data);
+              initDrivenFishes(_data);
+          })
+
+         socket.emit("initiate", {id:roomname, playerid:playerid});
+      }
+
+    //console.log("-- "+roomname+" -- "+playerid);
+    gameLayer = new game();
+    gameLayer.init();
+    this.addChild(gameLayer);
+  }
+});
+
+var game = cc.Layer.extend({
+  init:function () {
+      this._super();
+
+      var gravity = new Box2D.Common.Math.b2Vec2(0,0);
+      world = new Box2D.Dynamics.b2World(gravity, false);
+
+      //backgroundLayer = new bg_layer();
+      backgroundLayer = new cc.Layer();
+      backgroundLayer.init();
+      this.addChild(backgroundLayer);
+
+      fishLayer = new cc.Layer();
+      //fishLayer = new fish_layer();
+      fishLayer.init();
+      this.addChild(fishLayer);
+
+      netLayer = new cc.Layer();
+      netLayer.init();
+      this.addChild(netLayer);
+
+      cannonBGLayer = new cc.Layer();
+      cannonBGLayer.init();
+      this.addChild(cannonBGLayer);
+
+      bulletLayer = new cc.Layer();
+      bulletLayer.init();
+      this.addChild(bulletLayer);
+
+      cannonLayer = new cc.Layer();
+      cannonLayer.init();
+      this.addChild(cannonLayer);
+
+      buttonLayer = new cc.Layer();
+      buttonLayer.init();
+      this.addChild(buttonLayer);
+
+
+      commonButtonLayer = new cc.Layer();
+      commonButtonLayer.init();
+      this.addChild(commonButtonLayer);
+
+      coinLayer = new cc.Layer();
+      coinLayer.init();
+      this.addChild(coinLayer);
+
+      //this.debugDraw();
+
+      //initCannons();
+      //startGame();
+      //initScreenListener();
+      this.scheduleUpdate();
+  },
+    addBody:function(posX,posY,width,height, angle, isDynamic,spriteImage, type, life){
+        //this.addBody(240,10,480,20,false,"assets/ground.png","ground");
+        var _posX = posX;
+        var _posY = posY;
+        var fixtureDef = new Box2D.Dynamics.b2FixtureDef;
+        fixtureDef.density = 0;
+        fixtureDef.friction = 0;
+        fixtureDef.restitution = 0;
+        fixtureDef.isSensor = true;
+        fixtureDef.shape = new Box2D.Collision.Shapes.b2PolygonShape;
+        fixtureDef.shape.SetAsBox(0.5*width/meter,0.5*height/ meter);
+        var bodyDef = new Box2D.Dynamics.b2BodyDef;
+        if(isDynamic){
+            bodyDef.type = Box2D.Dynamics.b2Body.b2_dynamicBody;
+        }
+        else{
+            bodyDef.type = Box2D.Dynamics.b2Body.b2_staticBody;
+        }
+        bodyDef.position.Set(_posX/meter,_posY/meter);
+
+        bodyDef.userData = {
+            type: type,
+            life:life,
+            asset:spriteImage
+        };
+
+        var body = world.CreateBody(bodyDef)
+        body.CreateFixture(fixtureDef);
+
+        //console.log("BOX ATTACH "+bodyDef.GetPosition());
+    },
+    update: function () {
+        if(isReady){
+            sendPositionToServer();
+            //world.Step(dt,10,10);
+            world.Step(1 / 60, 10, 10);
+            updateWorldPosition();
+            //world.DrawDebugData();
+            checkCollide();
+        }
+    },
+    debugDraw: function () {
+        console.log("--- setup debug draw");
+        _debugDraw = new Box2D.Dynamics.b2DebugDraw();
+        _debugDraw.SetSprite(document.getElementById("gameCanvas").getContext("2d")); // test is the id of another canvas which debugdraw works on
+        _debugDraw.SetDrawScale(30.0);
+        _debugDraw.SetFillAlpha(0.3);
+        //_debugDraw.SetLineThickness(1);
+        //console.log("--- pass set line thickness");
+        _debugDraw.SetFlags(Box2D.Dynamics.b2DebugDraw.e_shapeBit | Box2D.Dynamics.b2DebugDraw.e_jointBit);
+        world.SetDebugDraw(_debugDraw);
+        //console.log("?? World "+world);
+        //world.DrawDebugData();
+    }
+
+});
+
+// ++++ NODE RELATED +++++
+
+function spreadToOther(type, object){
+    var data = object;
+    var broadcastType = "";
+    switch (type){
+        case "new_fish":
+            broadcastType = "new_fish";
+            break;
+
+        case "change_angle":
+            broadcastType = "change_fish_angle";
+            break;
+    }
+    data.roomid = roomname;
+    socket.emit(broadcastType, data);
+}
+
+function changeFishAngle(data){
+    console.log("--- CHANGE ANGLE");
+    var _name = data.name;
+    for(i=0; i<fishList.length; i++){
+        var currentObj = fishList[i];
+        console.log(i+" - "+currentObj.name+" of "+_name);
+        if(currentObj.name == _name){
+            console.log("find fish "+currentObj+"-- change to "+data.angle);
+            currentObj.angle = data.angle;
+        }
+        break;
+    }
+}
+
+function sendPositionToServer(){
+    var i;
+    var currentObj;
+    var data = {};
+    var _obj;
+    // FISH
+    var _fishdata = [];
+    for(i=0; i<fishList.length; i++){
+        currentObj = fishList[i];
+        _obj = {};
+        _obj.name = currentObj.name;
+        _obj.isFlip = currentObj.isFlip;
+        _obj.angle = currentObj.angle;
+        _obj.x = currentObj.x;
+        _obj.y = currentObj.y;
+        _obj.typeId = currentObj.typeId;
+        _obj.score = currentObj.score;
+        _obj.life = currentObj.life;
+
+        _fishdata.push(_obj);
+    }
+
+    // BULLET
+    var _bulletdata = [];
+    for(i=0; i<bulletList.length; i++){
+        currentObj = bulletList[i];
+        _obj = {};
+        _obj.name = currentObj.name;
+        _obj.isFlip = currentObj.isFlip;
+        _obj.angle = currentObj.angle;
+        _obj.x = currentObj.x;
+        _obj.y = currentObj.y;
+        _obj.typeId = currentObj.typeId;
+        _obj.score = currentObj.score;
+        _obj.life = currentObj.life;
+
+        _bulletdata.push(_obj);
+    }
+
+    data.roomid = roomname;
+    data.fishdata = _fishdata;
+    data.bulletdata = _bulletdata;
+
+    socket.emit("game_update", data);
+    //sendAllData(data);
+}
+
+// ==== BOX2D ======
+function checkCollide(){
+    for (var b = world.GetBodyList(); b; b = b.GetNext()) {
+        if(b!==null && b.GetUserData()){
+            var userData = b.GetUserData().type;
+
+             if(b.GetUserData()!== null && b.GetUserData().type == "bullet"){
+                 for(var c = b.GetContactList(); c; c= c.m_next){
+                     if(c.other.GetUserData() && c.other.GetUserData().type !== "bullet"){
+                         var _bullet = b.GetUserData().asset;
+                         var _fish = c.other.GetUserData().asset;
+                         var _bulletLife = _bullet.getLife();
+                         _bullet.destroy();
+                         var isPass = true;//checkGoldenTicket(c.other.GetUserData().type);
+                         if(isPass){
+                             if(_fish.hit(_bulletLife)){
+                                 createCoinAnimation(_fish.x, _fish.y);
+                                 removeShapeBody(_fish, "fish");
+                             }
+                         }
+
+                     }
+                 }
+             }
+        }
+    }
+}
+
+function updateWorldPosition(){
+    for (var b = world.GetBodyList(); b; b = b.GetNext()) {
+        if(b!==null && b.GetUserData()){
+            var asset = b.GetUserData().asset;
+            var b2Pos = new Box2D.Common.Math.b2Vec2(asset.getPositionX()/meter,asset.getPositionY()/meter);
+            var b2Rot = -1 * (cc.degreesToRadians(asset.getRotation()));
+            //b.SetTransform(b2Pos, b2Rot);
+            b.SetPosition(b2Pos);
+            b.SetAngle(b2Rot);
+        }
+    }
+}
+function getSpriteBody(asset, type){
+    for (var b = world.GetBodyList(); b; b = b.GetNext()) {
+        if(b.GetUserData()!== null && b.GetUserData().asset !== null && b.GetUserData().asset == asset){
+            return b;
+        }
+    }
+
+    return null;
+}
+
+function removeShapeBody(asset, type){
+     var b = getSpriteBody(asset, type);
+     if(b !== null){
+        world.DestroyBody(b);
+     }
+ }
+
+// ++++++++++ LAYERS +++++++++++++++++
+function settingUp(data){
+    initBackground();
+    if(isDriver) {
+        initFishes(total_fish);
+    }else{
+        initDrivenFishes(data.game.fish);
+    }
+    initCannons();
+
+    isReady = true;
+}
+
+function removeLayerChild(layer){
+    layer.removeAllChildren();
+}
+
+// FISH LAYER
+var fish_layer = cc.Layer.extend({
+   init: function () {
+       this._super();
+       if(isDriver) {
+           initFishes(total_fish);
+       }
+
+   }
+});
+// BACKGROUND LAYER
+function initBackground(){
+    var target = new cc.Sprite(asset_folder+"game_bg_2_hd.jpg");
+    var scaleFactor = resize(target.width, target.height);
+    console.log("W: "+target.width+" H: "+target.height+" -- "+scaleFactor);
+    console.log("Screen W: "+screen_width+" h: "+screen_height)
+    target.setScale(scaleFactor);
+    target.setAnchorPoint(0,0);
+    backgroundLayer.addChild(target);
+}
+
+
+var bg_layer = cc.Layer.extend({
+   init:function(){
+       this._super();
+       var target = new cc.Sprite(asset_folder+"game_bg_2_hd.jpg");
+       var scaleFactor = resize(target.width, target.height);
+       //console.log("W: "+target.width+" H: "+target.height+" -- "+scaleFactor);
+       target.setScale(scaleFactor);
+       target.setAnchorPoint(0,0);
+       this.addChild(target);
+   }
+});
+// +++++++++++++++++++++++++++++++++++++
+
+// CANNONS
+var cannon_layer = cc.Layer.extend({
+    init:function(){
+        this._super();
+    }
+});
+
+function initCannons(){
+    initCannonList();
+    for(var i=0; i < cannon_list.length; i++) {
+        var _current = cannon_list[i];
+
+        var Cannon = new cannonItem(_current.id, _current.pos,  _current.x, _current.y, _current.addRot);
+        cannonLayer.addChild(Cannon);
+
+        if(isPlayer){
+            var CannonBG = new cannonItemBG(_current.id, _current.pos,  _current.x, _current.y, _current.addRot);
+            cannonBGLayer.addChild(CannonBG);
+            isReady = true;
+            //initScreenListener();
+        }
+
+        if(_current.id == cannonType){
+            activeCannon = Cannon;
+        }
+    }
+}
+
+function changeCannonSize(value){
+    var _size = cannonSize + value*1;
+    if(_size > maxCannonSize){
+        cannonSize = maxCannonSize;
+    }else if(_size <= 1){
+        cannonSize = 1;
+    }else{
+        cannonSize = _size;
+    }
+
+    activeCannon.changeCannonSize(cannonSize);
+}
+
+function setPlayer(id){
+    isPlayer = true;
+    cannonType = id;
+    removeLayerChild(cannonLayer);
+    initCommonButtons();
+    initCannons();
+    initScreenListener();
+}
+
+function initScreenListener(){
+    cc.eventManager.addListener(shot_click_listener.clone(),fishLayer);
+}
+
+
+var shot_click_listener = cc.EventListener.create({
+    event:cc.EventListener.TOUCH_ONE_BY_ONE,//tells the game that you are waiting for touches, but only one at a time
+    swallowTouches:true, //ignore all touches when there's one active touch
+    onTouchBegan:function(touch, event){
+        console.log("--- CLICK TO SHOT");
+        if(isPlayer && isReady){
+            if(!isBulletIdle){
+                var target = event.getCurrentTarget();
+                var location = target.convertToNodeSpace(touch.getLocation());
+
+                //if(!checkButtonList(location)){
+                    setPlayerCannon(location.x, location.y);
+
+                    isBulletIdle = true;
+                    bulletIdleTimeout = setTimeout(removeBulletIdle, bulletIdleTime*1000);
+                //}
+                //console.log("--- CLICK TO SHOT");
+            }
+        }
+    }
+});
+
+function checkButtonList(location){
+    for(var i = 0; i<buttonList.length;i++){
+        var target = buttonList[i];
+        var targetLocation = target.convertToWorldSpace(target.getPosition());
+        console.log("--- Target X,Y: "+(targetLocation.x-target.width/2)+","+(targetLocation.y+target.height/2)+" of W,H: "+target.width+","+target.height);
+        console.log("--- Location X,Y: "+location.x+","+location.y);
+
+        var targetSize = target.getContentSize();
+        var targetRect = cc.rect(targetLocation.x-target.width/2,targetLocation.y+target.height/2,targetSize.width,targetSize.height);
+        if(cc.rectContainsPoint(targetRect, location)){
+            console.log("CLIck on "+target);
+            return true;
+        }
+    }
+    return false;
+}
+
+
+function removeBulletIdle(){
+    if(bulletIdleTimeout){
+        clearTimeout(bulletIdleTimeout);
+        bulletIdleTimeout = null;
+    }
+    isBulletIdle = false;
+}
+
+// BULLETS
+function initBullet(x, y, rot){
+    var bName = "bullet"+bulletIndex;
+    bulletIndex++;
+
+    if(bulletIndex > maxBulletIndex){
+        bulletIndex = 0;
+    }
+
+    var Bullet = new bulletItem(x,y,rot,cannonSize, bName);
+    bulletLayer.addChild(Bullet);
+
+    bulletList.push(Bullet);
+}
+
+function removeFromBulletList(obj){
+    var i = bulletList.length;
+    while(i > 0){
+        var j = i -1;
+        var _bullet = bulletList[j];
+        if(_bullet == obj){
+            bulletList.splice(j,1);
+            break;
+        }
+        i--;
+    }
+
+    return;
+}
+
+// BUTTONS
+function initCommonButtons(){
+    var bttn;
+    var src;
+    var initX = 30;
+    var initY = screen_height - 60;
+
+    var spacing = 10;
+
+    // auto shot
+    src = asset_folder+getSource("bttn_auto_shot");
+    bttn = new cc.Sprite(src);
+    commonButtonLayer.addChild(bttn);
+    initX += bttn.width/2;
+
+    bttn.setPosition(initX, initY);
+    initX += bttn.width + spacing;
+    cc.eventManager.addListener(auto_shot_listener.clone(),bttn);
+
+    // auto target
+    src = asset_folder+getSource("bttn_auto_target");
+    bttn = new cc.Sprite(src);
+    commonButtonLayer.addChild(bttn);
+    bttn.setPosition(initX, initY);
+
+    initX = screen_width - bttn.width/2 - 30;
+    cc.eventManager.addListener(auto_target_listener.clone(),bttn);
+
+    // leave
+    src = asset_folder+getSource("bttn_leave");
+    bttn = new cc.Sprite(src);
+    commonButtonLayer.addChild(bttn);
+    bttn.setPosition(initX, initY);
+    cc.eventManager.addListener(leave_listener.clone(),bttn);
+
+    initX -= (bttn.width + spacing);
+
+    // standout
+    src = asset_folder+getSource("bttn_standout");
+    bttn = new cc.Sprite(src);
+    commonButtonLayer.addChild(bttn);
+    bttn.setPosition(initX, initY);
+    cc.eventManager.addListener(standout_listener.clone(),bttn);
+
+}
+
+var auto_shot_listener = cc.EventListener.create({
+    event:cc.EventListener.TOUCH_ONE_BY_ONE,//tells the game that you are waiting for touches, but only one at a time
+    swallowTouches:true, //ignore all touches when there's one active touch
+
+    onTouchBegan:function(touch, event){
+
+        var target = event.getCurrentTarget();
+        //getLocation -- coordinates of the touch or click inside the game
+        //convertToNodeSpace -- convert getLocation coordinates into the coordinates relative to the object itself
+        var location = target.convertToNodeSpace(touch.getLocation());
+        var targetSize = target.getContentSize();
+        var targetRect = cc.rect(0,0,targetSize.width,targetSize.height);
+        if(cc.rectContainsPoint(targetRect, location)){
+            console.log("AUTO SHOT");
+            return true;
+        }
+        return false;
+    }
+});
+
+var auto_target_listener = cc.EventListener.create({
+    event:cc.EventListener.TOUCH_ONE_BY_ONE,//tells the game that you are waiting for touches, but only one at a time
+    swallowTouches:true, //ignore all touches when there's one active touch
+
+    onTouchBegan:function(touch, event){
+
+        var target = event.getCurrentTarget();
+        //getLocation -- coordinates of the touch or click inside the game
+        //convertToNodeSpace -- convert getLocation coordinates into the coordinates relative to the object itself
+        var location = target.convertToNodeSpace(touch.getLocation());
+        var targetSize = target.getContentSize();
+        var targetRect = cc.rect(0,0,targetSize.width,targetSize.height);
+        if(cc.rectContainsPoint(targetRect, location)){
+            console.log("AUTO TARGET")
+            return true;
+        }
+        return false;
+    }
+});
+
+var leave_listener = cc.EventListener.create({
+    event:cc.EventListener.TOUCH_ONE_BY_ONE,//tells the game that you are waiting for touches, but only one at a time
+    swallowTouches:true, //ignore all touches when there's one active touch
+
+    onTouchBegan:function(touch, event){
+
+        var target = event.getCurrentTarget();
+        //getLocation -- coordinates of the touch or click inside the game
+        //convertToNodeSpace -- convert getLocation coordinates into the coordinates relative to the object itself
+        var location = target.convertToNodeSpace(touch.getLocation());
+        var targetSize = target.getContentSize();
+        var targetRect = cc.rect(0,0,targetSize.width,targetSize.height);
+        if(cc.rectContainsPoint(targetRect, location)){
+            console.log("LEAVE")
+            return true;
+        }
+        return false;
+    }
+});
+
+var standout_listener = cc.EventListener.create({
+    event:cc.EventListener.TOUCH_ONE_BY_ONE,//tells the game that you are waiting for touches, but only one at a time
+    swallowTouches:true, //ignore all touches when there's one active touch
+
+    onTouchBegan:function(touch, event){
+
+        var target = event.getCurrentTarget();
+        //getLocation -- coordinates of the touch or click inside the game
+        //convertToNodeSpace -- convert getLocation coordinates into the coordinates relative to the object itself
+        var location = target.convertToNodeSpace(touch.getLocation());
+        var targetSize = target.getContentSize();
+        var targetRect = cc.rect(0,0,targetSize.width,targetSize.height);
+        if(cc.rectContainsPoint(targetRect, location)){
+            console.log("STANDOUT")
+            return true;
+        }
+        return false;
+    }
+});
+
+// FISHES
+function checkGoldenTicket(type){
+    for(var i=0; i < goldenTicket.length; i++){
+        if(goldenTicket[i].id == type){
+            return false;
+        }
+    }
+    return true;
+}
+
+function initFishes(totalFish){
+    for(var i=0; i < totalFish; i++){
+        var newFish = createNewFish();
+        if(isDriver){
+            var datasend = {};
+            //datasend.roomid = roomname;
+            datasend.name = newFish.name;
+            datasend.id = newFish.typeId;
+            datasend.flip = newFish.isFlip;
+            datasend.x = newFish.x;
+            datasend.y = newFish.y;
+            datasend.angle = newFish.angle;
+            spreadToOther("new_fish", datasend);
+        }
+    }
+}
+
+function initDrivenFishes(data){
+    var _index = 0;
+    for(var i = 0; i < data.length; i++){
+        var current = data[i];
+        var fName = current.name;
+
+        var Fish = new fish(current.typeId, current.isFlip, current.x, current.y, fName, current.angle);
+        fishLayer.addChild(Fish);
+
+        fishList.push(Fish);
+    }
+    fishIndex = fishPosList.length;
+}
+
+
+function createNewFish(){
+    var minX = 50;
+    var maxX = 600;
+    var minY = 50;
+    var maxY = screen_height;
+
+    var randomX = (minX + Math.round(Math.random()*(maxX - minX)));
+    var randomY = minY + Math.round(Math.random()*(maxY - minY));
+
+    var randomDir = Math.round(Math.random());
+    var flip = false;
+    if(randomDir == 1){
+        randomX += screen_width ;
+        flip = true;
+    }else{
+        randomX *= -1;
+        randomX -= area_margin;
+    }
+
+    var min = 0;
+    var max = fishassets.length-1;
+
+    var randId = min + Math.round(Math.random()*(max - min));
+    var fName = "fish"+fishIndex;
+    fishIndex++;
+
+    if(fishIndex > maxFishIndex){
+        fishIndex = 0;
+    }
+
+    var Fish = new fish(randId, flip, randomX, randomY, fName, 0);
+    fishLayer.addChild(Fish);
+
+   // game.addBody(Fish.getPositionX(), Fish.getPositionY(), Fish._getWidth(), Fish._getHeight(), true, Fish, "fish", Fish.life);
+
+    fishList.push(Fish);
+
+    return Fish;
+}
+
+function removeFromFishList(obj){
+    var i = fishList.length;
+    while(i > 0){
+        var j = i -1;
+        var _fish = fishList[j];
+        if(_fish == obj){
+            fishList.splice(j,1);
+            break;
+        }
+        i--;
+    }
+
+    return;
+}
+
+// COINS
+function createCoinAnimation(x,y){
+    var Coin = new coin(x,y);
+    coinLayer.addChild(Coin);
+}
+
+function removeCoin(sprite){
+    if(sprite !== null){
+        coinLayer.removeChild(sprite);
+    }
+}
+
+// ++++ COMMON FUNCTION ++++++
+function resize(w, h){
+    var widthRatio = w/screen_width;
+    var heightRatio = h /screen_height;
+    var refRatio = 1;
+
+    if (widthRatio > heightRatio) {
+        refRatio = 1/heightRatio;
+    }else if(widthRatio < heightRatio){
+        refRatio = 1/widthRatio;
+    }else{
+        refRatio = 1/widthRatio;
+    }
+
+    return refRatio;
+}

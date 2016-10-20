@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+		<meta http-equiv="Pragma" content="no-cache" />
+		<meta http-equiv="Expires" content="0" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+
+		<script type="text/javascript" src="/js/socket.io-1.2.0.js"></script>
+		<script type="text/javascript" src="/js/jquery-1.11.1.js"></script>
+
+		<script type="text/javascript" src="/js/jquery.popupoverlay.js"></script>
+		<script type="text/javascript" src="/js/popups.js"></script>
+		<script type="text/javascript" src="/game/connection.js"></script>
+		<script type="text/javascript" src="cocos2d-html5/CCBoot.js"></script>
+		<!-- <script src="src/gamesetting.js"></script> -->
+		<script src="main.js"></script>
+		<title>Fish Joy</title>
+	</head>
+	<body style="padding:0; margin: 0; background: #000;">
+	<input type="hidden" id="roomid" value="<%=roomId%>" />
+	<canvas id="gameCanvas"></canvas>
+	</body>
+</html>

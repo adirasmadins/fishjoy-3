@@ -1,0 +1,30 @@
+{
+    "debugMode" : 0,
+    "showFPS" : false,
+    "frameRate" : 60,
+    "id" : "gameCanvas",
+    "renderMode" : 0,
+    "engineDir":"cocos2d-html5/",
+
+    "modules" : ["cocos2d","external", "extensions"],
+
+    "jsList" : [
+        "js/jquery-1.11.1.js",
+        "js/socket.io-1.2.0.js",
+        "js/jquery.popupoverlay.js",
+        "src/popupscript.js",
+        "js/popups.js",
+        "src/gamesetting.js",
+        "src/loadassets.js",
+        "src/popupobject.js",
+        "src/fish.js",
+        "src/cannon.js",
+        "src/score.js",
+        "src/bullet.js",
+        "src/coins.js",
+        "src/bullethit.js",
+        "src/bombhit.js",
+        "src/gamescript.js",
+        "src/connection.js"
+    ]
+}
